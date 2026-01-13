@@ -1,0 +1,122 @@
+id: rss_feed_collector
+namespace: subflows
+
+description: |
+  Reusable subflow that fetches and parses RSS feeds from curated cybersecurity sources.
+  Filters articles by time window, deduplicates, and handles errors gracefully.
+
+inputs:
+  - id: hours_back
+    type: INT
+    description: "Hours of news to collect (default: 24)"
+    defaults: 24
+
+  - id: feed_config
+    type: JSON
+    description: "Optional custom feed configuration. If not provided, uses default curated list."
+    required: false
+
+tasks:
+  - id: fetch_rss_feeds
+    type: io.kestra.plugin.scripts.python.Script
+    description: Fetch and parse RSS feeds from curated cybersecurity sources
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      image: python:3.11-slim
+    beforeCommands:
+      - pip install feedparser requests python-dateutil
+    outputFiles:
+      - "feeds_data.json"
+    script: |
+      import feedparser
+      import json
+      from datetime import datetime, timedelta, timezone
+      from dateutil import parser as date_parser
+
+      # Curated cybersecurity RSS feeds
+      feeds = {
+          "Krebs on Security": "https://krebsonsecurity.com/feed/",
+          "Bleeping Computer": "https://www.bleepingcomputer.com/feed/",
+          "The Hacker News": "https://feeds.feedburner.com/TheHackersNews",
+          "CISA Alerts": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
+          "Threatpost": "https://threatpost.com/feed/",
+          "Dark Reading": "https://www.darkreading.com/rss.xml",
+          "Schneier on Security": "https://www.schneier.com/feed/atom/",
+          "SANS ISC": "https://isc.sans.edu/rssfeed.xml"
+      }
+
+      hours_back = {{inputs.hours_back}}
+      cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+
+      all_articles = []
+      feed_status = {}
+
+      for source_name, feed_url in feeds.items():
+          try:
+              print(f"Fetching {source_name}...")
+              feed = feedparser.parse(feed_url)
+
+              article_count = 0
+              for entry in feed.entries:
+                  try:
+                      # Parse publication date
+                      if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                          pub_date = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                      elif hasattr(entry, 'published'):
+                          pub_date = date_parser.parse(entry.published)
+                          if pub_date.tzinfo is None:
+                              pub_date = pub_date.replace(tzinfo=timezone.utc)
+                      else:
+                          continue
+
+                      # Filter by time window
+                      if pub_date < cutoff_time:
+                          continue
+
+                      article_count += 1
+                      all_articles.append({
+                          "title": entry.get('title', 'No title'),
+                          "link": entry.get('link', ''),
+                          "summary": entry.get('summary', entry.get('description', '')),
+                          "published": pub_date.isoformat(),
+                          "source": source_name
+                      })
+                  except Exception as e:
+                      print(f"Error parsing entry from {source_name}: {e}")
+                      continue
+
+              feed_status[source_name] = {"status": "success", "count": article_count}
+              print(f"✅ {source_name}: {article_count} articles")
+
+          except Exception as e:
+              feed_status[source_name] = {"status": "error", "error": str(e)}
+              print(f"⚠️  {source_name}: Failed - {e}")
+
+      # Remove duplicates based on URL similarity
+      seen_urls = set()
+      unique_articles = []
+      for article in all_articles:
+          url = article['link'].lower().split('?')[0]  # Remove query params
+          if url not in seen_urls:
+              seen_urls.add(url)
+              unique_articles.append(article)
+
+      output = {
+          "articles": unique_articles,
+          "feed_status": feed_status,
+          "total_articles": len(unique_articles),
+          "time_range": {
+              "from": cutoff_time.isoformat(),
+              "to": datetime.now(timezone.utc).isoformat()
+          }
+      }
+
+      with open('feeds_data.json', 'w') as f:
+          json.dump(output, f, indent=2)
+
+      print(f"\n📊 Total unique articles: {len(unique_articles)}")
+
+outputs:
+  - id: feeds_data
+    type: JSON
+    value: "{{ read(outputs.fetch_rss_feeds.outputFiles['feeds_data.json']) }}"

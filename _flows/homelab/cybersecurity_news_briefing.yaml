@@ -1,10 +1,10 @@
 id: daily_cybersecurity_news
 namespace: homelab
 
-
 description: |
   Daily automated cybersecurity intelligence briefing that monitors curated RSS feeds,
   uses Claude AI to analyze and categorize content, and generates a structured markdown report.
+  This flow uses modular subflows for maximum reusability.
 
 triggers:
   - id: daily_schedule
@@ -18,196 +18,39 @@ inputs:
     defaults: 24
 
 tasks:
-  - id: fetch_rss_feeds
-    type: io.kestra.plugin.scripts.python.Script
+  - id: collect_feeds
+    type: io.kestra.plugin.core.flow.Subflow
+    namespace: subflows
+    flowId: rss_feed_collector
+    inputs:
+      hours_back: "{{ inputs.hours_back }}"
     description: Fetch and parse RSS feeds from curated cybersecurity sources
-    taskRunner:
-      type: io.kestra.plugin.scripts.runner.docker.Docker
-      image: python:3.11-slim
-    beforeCommands:
-      - pip install feedparser requests python-dateutil
-    outputFiles:
-      - "feeds_data.json"
-    script: |
-      import feedparser
-      import json
-      from datetime import datetime, timedelta, timezone
-      from dateutil import parser as date_parser
 
-      # Curated cybersecurity RSS feeds
-      feeds = {
-          "Krebs on Security": "https://krebsonsecurity.com/feed/",
-          "Bleeping Computer": "https://www.bleepingcomputer.com/feed/",
-          "The Hacker News": "https://feeds.feedburner.com/TheHackersNews",
-          "CISA Alerts": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
-          "Threatpost": "https://threatpost.com/feed/",
-          "Dark Reading": "https://www.darkreading.com/rss.xml",
-          "Schneier on Security": "https://www.schneier.com/feed/atom/",
-          "SANS ISC": "https://isc.sans.edu/rssfeed.xml"
-      }
+  - id: analyze_content
+    type: io.kestra.plugin.core.flow.Subflow
+    namespace: subflows
+    flowId: claude_content_analyzer
+    inputs:
+      content_data: "{{ outputs.collect_feeds.outputs.feeds_data }}"
+      analysis_type: "daily"
+    description: Use Claude AI to analyze, categorize, and filter content
 
-      hours_back = {{inputs.hours_back}}
-      cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+  - id: generate_report
+    type: io.kestra.plugin.core.flow.Subflow
+    namespace: subflows
+    flowId: markdown_report_generator
+    inputs:
+      analyzed_content: "{{ outputs.analyze_content.outputs.analyzed_content }}"
+      report_type: "daily"
+      report_date: "{{ execution.startDate | date('yyyy-MM-dd') }}"
+      feed_status: "{{ outputs.collect_feeds.outputs.feeds_data | jq('.feed_status') }}"
+    description: Generate formatted markdown briefing report
 
-      all_articles = []
-      feed_status = {}
-
-      for source_name, feed_url in feeds.items():
-          try:
-              print(f"Fetching {source_name}...")
-              feed = feedparser.parse(feed_url)
-
-              article_count = 0
-              for entry in feed.entries:
-                  try:
-                      # Parse publication date
-                      if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                          pub_date = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
-                      elif hasattr(entry, 'published'):
-                          pub_date = date_parser.parse(entry.published)
-                          if pub_date.tzinfo is None:
-                              pub_date = pub_date.replace(tzinfo=timezone.utc)
-                      else:
-                          continue
-
-                      # Filter by time window
-                      if pub_date < cutoff_time:
-                          continue
-
-                      article_count += 1
-                      all_articles.append({
-                          "title": entry.get('title', 'No title'),
-                          "link": entry.get('link', ''),
-                          "summary": entry.get('summary', entry.get('description', '')),
-                          "published": pub_date.isoformat(),
-                          "source": source_name
-                      })
-                  except Exception as e:
-                      print(f"Error parsing entry from {source_name}: {e}")
-                      continue
-
-              feed_status[source_name] = {"status": "success", "count": article_count}
-              print(f"✅ {source_name}: {article_count} articles")
-
-          except Exception as e:
-              feed_status[source_name] = {"status": "error", "error": str(e)}
-              print(f"⚠️  {source_name}: Failed - {e}")
-
-      # Remove duplicates based on URL similarity
-      seen_urls = set()
-      unique_articles = []
-      for article in all_articles:
-          url = article['link'].lower().split('?')[0]  # Remove query params
-          if url not in seen_urls:
-              seen_urls.add(url)
-              unique_articles.append(article)
-
-      output = {
-          "articles": unique_articles,
-          "feed_status": feed_status,
-          "total_articles": len(unique_articles),
-          "time_range": {
-              "from": cutoff_time.isoformat(),
-              "to": datetime.now(timezone.utc).isoformat()
-          }
-      }
-
-      with open('feeds_data.json', 'w') as f:
-          json.dump(output, f, indent=2)
-
-      print(f"\n📊 Total unique articles: {len(unique_articles)}")
-
-  - id: generate_briefing
-    type: io.kestra.plugin.scripts.shell.Commands
-    description: Use Claude AI to analyze news and generate markdown briefing report
-    taskRunner:
-      type: io.kestra.plugin.scripts.runner.docker.Docker
-      image: nezhar/claude-container:latest
-      user: "1000:1000"
-    env:
-      CLAUDE_CODE_OAUTH_TOKEN: "{{ globals['claude-code-oauth-token'] }}"
-    inputFiles:
-      feeds_data.json: "{{ outputs.fetch_rss_feeds.outputFiles['feeds_data.json'] }}"
-    outputFiles:
-      - "briefing-*.md"
-    commands:
-      - |
-        # Get current date for report
-        TODAY=$(date +%Y-%m-%d)
-
-        cat > /tmp/briefing_prompt.txt << 'PROMPT_EOF'
-        You are a cybersecurity intelligence analyst. Analyze the following RSS feed articles and create a comprehensive markdown intelligence briefing report.
-
-        CRITICAL: Output ONLY the markdown report with no additional explanations or wrapper text.
-
-        Your tasks:
-        1. Filter out low-impact stories, marketing content, and duplicate coverage
-        2. Categorize articles into: Critical Alerts, Vulnerabilities, Breaches & Incidents, Advisories, Industry News
-        3. For each significant item, extract: key facts, affected systems, severity, and recommended actions
-        4. Create a 3-5 sentence executive summary highlighting the most critical items
-
-        Output a complete markdown report with this structure:
-
-        # Cybersecurity Intelligence Briefing
-        **Date:** [Current Date]
-        **Period:** Last 24 hours
-        **Sources:** [Number] feeds monitored
-        **Total Articles Analyzed:** [Number]
-
-        ---
-
-        ## Executive Summary
-
-        [Your 3-5 sentence executive summary highlighting critical items]
-
-        ---
-
-        ## 🚨 Critical Alerts
-
-        [Items requiring immediate attention - use ### for titles, include source, date, impact, recommended actions, and links]
-
-        ## Vulnerabilities & Patches
-
-        [CVEs, security flaws, available fixes]
-
-        ## Breaches & Incidents
-
-        [Attacks, data leaks, compromises]
-
-        ## Advisories & Warnings
-
-        [CISA alerts, vendor notifications]
-
-        ## Industry News
-
-        [Trends, regulations, notable events]
-
-        ---
-
-        ## Feed Health Status
-
-        [List each feed with ✅ success or ⚠️ error status and article counts]
-
-        ---
-
-        *Generated by Kestra Cybersecurity Intelligence Briefing*
-
-        Here is the feed data to analyze:
-        PROMPT_EOF
-
-        cat feeds_data.json >> /tmp/briefing_prompt.txt
-
-        # Run Claude to generate the briefing
-        claude --dangerously-skip-permissions --print "$(cat /tmp/briefing_prompt.txt)" > "briefing-${TODAY}.md" || \
-        echo "# Error\nFailed to generate briefing. See logs for details." > "briefing-${TODAY}.md"
-
-        # Debug output
-        echo "=== Briefing File Debug ==="
-        ls -lh briefing-*.md
-        echo "First 500 characters:"
-        head -c 500 "briefing-${TODAY}.md"
-        echo ""
-        echo "=== End Debug ==="
+  - id: save_report
+    type: io.kestra.plugin.core.storage.LocalFiles
+    description: Save report to namespace files for historical reference
+    inputs:
+      briefing.md: "{{ outputs.generate_report.outputs.report_file }}"
 
   - id: display_report
     type: io.kestra.plugin.core.log.Log
@@ -216,7 +59,7 @@ tasks:
       CYBERSECURITY BRIEFING REPORT
       ============================================
 
-      {{ read(outputs.generate_briefing.outputFiles['briefing-' ~ (execution.startDate | date('yyyy-MM-dd')) ~ '.md']) }}
+      {{ read(outputs.generate_report.outputs.report_file) }}
 
       ============================================
       END OF REPORT
@@ -229,10 +72,14 @@ tasks:
 
       📄 VIEW REPORT: See "display_report" task logs above for full content
 
-      📥 ALTERNATIVE DOWNLOAD OPTIONS:
+      📥 DOWNLOAD OPTIONS:
 
       Internal URI (for API/CLI):
-      {{ outputs.generate_briefing.outputFiles['briefing-' ~ (execution.startDate | date('yyyy-MM-dd')) ~ '.md'] }}
+      {{ outputs.generate_report.outputs.report_file }}
 
       Download via Kestra CLI:
-      kestra outputs download "{{ outputs.generate_briefing.outputFiles['briefing-' ~ (execution.startDate | date('yyyy-MM-dd')) ~ '.md'] }}"
+      kestra outputs download "{{ outputs.generate_report.outputs.report_file }}"
+
+      📊 STATISTICS:
+      - Total Articles: {{ outputs.collect_feeds.outputs.feeds_data | jq('.total_articles') }}
+      - Time Range: {{ outputs.collect_feeds.outputs.feeds_data | jq('.time_range.from') }} to {{ outputs.collect_feeds.outputs.feeds_data | jq('.time_range.to') }}

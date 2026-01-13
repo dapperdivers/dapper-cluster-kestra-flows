@@ -1,0 +1,144 @@
+id: claude_content_analyzer
+namespace: subflows
+
+description: |
+  Reusable subflow that uses Claude AI to analyze cybersecurity content.
+  Supports different analysis types: daily (categorize and filter) or weekly (aggregate and identify trends).
+
+inputs:
+  - id: content_data
+    type: JSON
+    description: "Content to analyze (articles JSON for daily, or combined reports for weekly)"
+
+  - id: analysis_type
+    type: STRING
+    description: "Type of analysis: 'daily' or 'weekly'"
+    defaults: "daily"
+
+  - id: prompt_override
+    type: STRING
+    description: "Optional custom prompt to override default analysis prompt"
+    required: false
+
+tasks:
+  - id: analyze_content
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Use Claude AI to analyze content based on analysis type
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      image: nezhar/claude-container:latest
+      user: "1000:1000"
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: "{{ globals['claude-code-oauth-token'] }}"
+    inputFiles:
+      content_data.json: "{{ inputs.content_data }}"
+    outputFiles:
+      - "analyzed_content.json"
+    commands:
+      - |
+        {% if inputs.analysis_type == 'daily' %}
+        # Daily analysis prompt
+        cat > /tmp/analysis_prompt.txt << 'PROMPT_EOF'
+        You are a cybersecurity intelligence analyst. Analyze the following RSS feed articles and create a structured intelligence analysis.
+
+        CRITICAL: Output ONLY valid JSON with no additional explanations or wrapper text.
+
+        Your tasks:
+        1. Filter out low-impact stories, marketing content, and duplicate coverage
+        2. Categorize articles into: Critical Alerts, Vulnerabilities, Breaches & Incidents, Advisories, Industry News
+        3. For each significant item, extract: key facts, affected systems, severity, and recommended actions
+        4. Create a 3-5 sentence executive summary highlighting the most critical items
+
+        Output valid JSON in this exact structure:
+        {
+          "executive_summary": "Your 3-5 sentence summary here",
+          "categories": {
+            "critical_alerts": [
+              {
+                "title": "...",
+                "source": "...",
+                "date": "...",
+                "summary": "...",
+                "impact": "...",
+                "affected_systems": "...",
+                "severity": "high|critical",
+                "recommended_actions": "...",
+                "link": "..."
+              }
+            ],
+            "vulnerabilities": [...],
+            "breaches_incidents": [...],
+            "advisories": [...],
+            "industry_news": [...]
+          },
+          "feed_status": {},
+          "metadata": {
+            "total_articles": 0,
+            "analyzed_count": 0,
+            "timestamp": "..."
+          }
+        }
+
+        Here is the feed data to analyze:
+        PROMPT_EOF
+        {% else %}
+        # Weekly analysis prompt
+        cat > /tmp/analysis_prompt.txt << 'PROMPT_EOF'
+        You are a cybersecurity intelligence analyst. Analyze these 7 daily cybersecurity briefings and create a comprehensive weekly summary.
+
+        CRITICAL: Output ONLY valid JSON with no additional explanations or wrapper text.
+
+        Your tasks:
+        1. Identify recurring threats and persistent vulnerabilities mentioned multiple times
+        2. Highlight the top 5-7 most critical items from the entire week
+        3. Identify trends: emerging threats, what got patched, what got worse
+        4. Consolidate duplicate coverage across days
+        5. Create executive summary of the week's threat landscape
+
+        Output valid JSON in this exact structure:
+        {
+          "executive_summary": "Overview of the week's threat landscape",
+          "top_critical_items": [
+            {
+              "title": "...",
+              "days_mentioned": 3,
+              "summary": "...",
+              "impact": "...",
+              "trend": "emerging|persistent|resolved",
+              "recommended_actions": "..."
+            }
+          ],
+          "trends": {
+            "emerging_threats": ["...", "..."],
+            "persistent_vulnerabilities": ["...", "..."],
+            "patches_mitigations": ["...", "..."]
+          },
+          "metadata": {
+            "reports_analyzed": 7,
+            "date_range": "...",
+            "timestamp": "..."
+          }
+        }
+
+        Here are the daily briefings to analyze:
+        PROMPT_EOF
+        {% endif %}
+
+        cat content_data.json >> /tmp/analysis_prompt.txt
+
+        # Run Claude to generate the analysis
+        claude --dangerously-skip-permissions --print "$(cat /tmp/analysis_prompt.txt)" > analyzed_content.json || \
+        echo '{"error": "Failed to generate analysis. See logs for details."}' > analyzed_content.json
+
+        # Debug output
+        echo "=== Analysis Output Debug ==="
+        ls -lh analyzed_content.json
+        echo "First 500 characters:"
+        head -c 500 analyzed_content.json
+        echo ""
+        echo "=== End Debug ==="
+
+outputs:
+  - id: analyzed_content
+    type: JSON
+    value: "{{ read(outputs.analyze_content.outputFiles['analyzed_content.json']) }}"
