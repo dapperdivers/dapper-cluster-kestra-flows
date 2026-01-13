@@ -107,12 +107,6 @@ tasks:
       report_date: "{{ execution.startDate | date('yyyy-MM-dd') }}"
     description: Generate formatted weekly summary markdown report
 
-  - id: save_weekly_report
-    type: io.kestra.plugin.core.storage.LocalFiles
-    description: Save weekly report to namespace files
-    inputs:
-      weekly-summary.md: "{{ outputs.generate_weekly_report.outputs.report_file }}"
-
   - id: display_weekly_report
     type: io.kestra.plugin.core.log.Log
     message: |
