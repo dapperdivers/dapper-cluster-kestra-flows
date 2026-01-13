@@ -12,25 +12,42 @@ triggers:
     cron: "0 8 * * 1"  # Run at 8 AM every Monday (1 hour after daily briefing)
 
 tasks:
+  - id: fetch_execution_history
+    type: io.kestra.plugin.core.execution.Executions
+    description: Query last 7 successful daily briefing executions
+    namespace: homelab
+    flowId: daily_cybersecurity_news
+    limit: 10
+    states:
+      - SUCCESS
+
   - id: fetch_daily_reports
     type: io.kestra.plugin.scripts.python.Script
-    description: Load last 7 daily briefing files from namespace storage
+    description: Load last 7 daily briefing files from execution outputs
     taskRunner:
       type: io.kestra.plugin.scripts.runner.docker.Docker
       image: python:3.11-slim
     beforeCommands:
       - pip install requests
+    inputFiles:
+      executions.json: "{{ outputs.fetch_execution_history.executions }}"
     outputFiles:
       - "weekly_data.json"
     script: |
       import json
       from datetime import datetime, timedelta
       import os
+      import requests
+
+      # Load execution history
+      with open('executions.json', 'r') as f:
+          executions = json.load(f)
+
+      print(f"Found {len(executions)} recent executions")
 
       # Calculate the date range for the past 7 days (including today)
       end_date = datetime.now()
       date_range = []
-      reports = []
 
       for i in range(7):
           date = end_date - timedelta(days=i)
@@ -40,13 +57,6 @@ tasks:
       date_range.reverse()  # Oldest to newest
 
       print(f"Looking for daily reports from: {date_range[0]} to {date_range[-1]}")
-
-      # In a real implementation, you would fetch these from Kestra namespace storage
-      # For now, we'll create a structure that expects the reports to be available
-      # This is a placeholder that will need to be adapted based on actual namespace file access
-
-      # TODO: Update this to actually fetch from namespace storage using Kestra's file access
-      # For now, create a structure that the analyzer can work with
 
       weekly_data = {
           "date_range": {
@@ -61,39 +71,144 @@ tasks:
           }
       }
 
-      # Note: In production, this would iterate through namespace files
-      # and load each daily briefing markdown file
+      # Create a map of execution dates to their outputs
+      execution_map = {}
+      for execution in executions:
+          try:
+              # Get execution start date
+              start_date = execution.get('startDate', '')
+              if start_date:
+                  exec_date = datetime.fromisoformat(start_date.replace('Z', '+00:00')).strftime('%Y-%m-%d')
+
+                  # Get the report file from generate_report task outputs
+                  if 'outputs' in execution and 'generate_report' in execution['outputs']:
+                      report_data = execution['outputs']['generate_report']
+                      if 'outputs' in report_data and 'report_file' in report_data['outputs']:
+                          execution_map[exec_date] = {
+                              'execution_id': execution.get('id'),
+                              'report_uri': report_data['outputs']['report_file']
+                          }
+                          print(f"Found execution for {exec_date}: {execution.get('id')}")
+          except Exception as e:
+              print(f"Error processing execution: {e}")
+              continue
+
+      # Fetch reports for each date in our range
       for date_str in date_range:
-          # Placeholder for actual namespace file retrieval
-          # In Kestra, you would use something like:
-          # file_uri = f"kestra:///io/kestra/storage/homelab/briefings/briefing-{date_str}.md"
-          # report_content = read_from_storage(file_uri)
+          if date_str in execution_map:
+              try:
+                  report_uri = execution_map[date_str]['report_uri']
 
-          report_entry = {
-              "date": date_str,
-              "filename": f"briefing-{date_str}.md",
-              "status": "placeholder",
-              "content": f"Placeholder for report from {date_str}"
-          }
+                  # Read the report file using Kestra's internal storage URI
+                  # The URI is in Kestra's internal storage, we'll store it for Claude to access
+                  report_entry = {
+                      "date": date_str,
+                      "filename": f"briefing-{date_str}.md",
+                      "status": "found",
+                      "execution_id": execution_map[date_str]['execution_id'],
+                      "storage_uri": report_uri,
+                      "content": f"Report available at {report_uri}"
+                  }
 
-          weekly_data["reports"].append(report_entry)
-          weekly_data["metadata"]["missing_dates"].append(date_str)
+                  weekly_data["reports"].append(report_entry)
+                  weekly_data["metadata"]["found_reports"] += 1
+                  print(f"✅ {date_str}: Found report")
 
-      print(f"\nWeekly data structure created")
-      print(f"Date range: {weekly_data['date_range']}")
-      print(f"Reports to analyze: {len(weekly_data['reports'])}")
+              except Exception as e:
+                  print(f"⚠️  {date_str}: Error loading report - {e}")
+                  weekly_data["metadata"]["missing_dates"].append(date_str)
+          else:
+              print(f"⚠️  {date_str}: No execution found")
+              weekly_data["metadata"]["missing_dates"].append(date_str)
+
+      print(f"\n📊 Weekly data collection complete")
+      print(f"Found: {weekly_data['metadata']['found_reports']}/{weekly_data['metadata']['expected_reports']} reports")
+      print(f"Missing dates: {weekly_data['metadata']['missing_dates']}")
 
       with open('weekly_data.json', 'w') as f:
           json.dump(weekly_data, f, indent=2)
 
-      print("\n📊 Weekly data collection complete")
+  - id: collect_report_contents
+    type: io.kestra.plugin.scripts.python.Script
+    description: Collect report contents using Kestra read() function
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+      image: python:3.11-slim
+    inputFiles:
+      weekly_data.json: "{{ outputs.fetch_daily_reports.outputFiles['weekly_data.json'] }}"
+      report_1.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[0].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_2.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[1].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_3.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[2].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_4.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[3].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_5.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[4].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_6.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[5].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_7.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[6].outputs.generate_report.outputs.report_file') | default('') }}"
+    outputFiles:
+      - "weekly_reports.json"
+    script: |
+      import json
+      import glob
+      from datetime import datetime
+
+      # Load weekly data metadata
+      with open('weekly_data.json', 'r') as f:
+          weekly_data = json.load(f)
+
+      # Collect all report files that were downloaded
+      report_files = glob.glob('report_*.md')
+      print(f"Found {len(report_files)} report files")
+
+      reports_with_content = []
+
+      for report_file in sorted(report_files):
+          try:
+              with open(report_file, 'r') as f:
+                  content = f.read()
+
+              # Extract date from content or use index
+              if content and len(content) > 100:
+                  # Try to extract date from the report
+                  date_str = None
+                  for line in content.split('\n')[:10]:
+                      if '**Date:**' in line:
+                          date_str = line.split('**Date:**')[1].strip()
+                          break
+
+                  if not date_str:
+                      # Fallback: use current date minus index
+                      idx = int(report_file.replace('report_', '').replace('.md', '')) - 1
+                      date_str = f"report_{idx + 1}"
+
+                  reports_with_content.append({
+                      "date": date_str,
+                      "content": content
+                  })
+                  print(f"✅ Loaded report {report_file}: {len(content)} characters")
+
+          except Exception as e:
+              print(f"⚠️  Error reading {report_file}: {e}")
+
+      # Create final analysis input
+      analysis_input = {
+          "date_range": weekly_data["date_range"],
+          "reports": reports_with_content,
+          "metadata": {
+              "reports_loaded": len(reports_with_content),
+              "expected_reports": 7
+          }
+      }
+
+      with open('weekly_reports.json', 'w') as f:
+          json.dump(analysis_input, f, indent=2)
+
+      print(f"\n📊 Loaded {len(reports_with_content)} complete reports for analysis")
 
   - id: aggregate_analysis
     type: io.kestra.plugin.core.flow.Subflow
     namespace: subflows
     flowId: claude_content_analyzer
     inputs:
-      content_data: "{{ outputs.fetch_daily_reports.outputs.weekly_data }}"
+      content_data: "{{ outputs.collect_report_contents.outputFiles['weekly_reports.json'] }}"
       analysis_type: "weekly"
     description: Use Claude AI to aggregate and analyze weekly trends
 

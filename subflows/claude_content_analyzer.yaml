@@ -30,26 +30,40 @@ tasks:
       user: "1000:1000"
     env:
       CLAUDE_CODE_OAUTH_TOKEN: "{{ globals['claude-code-oauth-token'] }}"
-    inputFiles:
-      content_data.json: "{{ inputs.content_data }}"
     outputFiles:
       - "analyzed_content.json"
     commands:
       - |
+        # Stage content data in workspace for Claude CLI
+        cat > content_data.json << 'DATA_EOF'
+        {{ inputs.content_data }}
+        DATA_EOF
+
         {% if inputs.analysis_type == 'daily' %}
-        # Daily analysis prompt
-        cat > /tmp/analysis_prompt.txt << 'PROMPT_EOF'
-        You are a cybersecurity intelligence analyst. Analyze the following RSS feed articles and create a structured intelligence analysis.
+        # Daily analysis - create CLAUDE.md with instructions
+        cat > CLAUDE.md << 'PROMPT_EOF'
+        # Cybersecurity Intelligence Analysis Task
 
-        CRITICAL: Output ONLY valid JSON with no additional explanations or wrapper text.
+        You are a cybersecurity intelligence analyst. Your task is to analyze RSS feed articles and create a structured intelligence analysis.
 
-        Your tasks:
+        ## Step 1: Read and Analyze the Data
+        First, read and examine the `content_data.json` file in your workspace. Understand the structure and content of the articles.
+
+        ## Step 2: Analysis Tasks
         1. Filter out low-impact stories, marketing content, and duplicate coverage
         2. Categorize articles into: Critical Alerts, Vulnerabilities, Breaches & Incidents, Advisories, Industry News
         3. For each significant item, extract: key facts, affected systems, severity, and recommended actions
         4. Create a 3-5 sentence executive summary highlighting the most critical items
 
-        Output valid JSON in this exact structure:
+        ## Step 3: Output Requirements
+        CRITICAL - Write your analysis to `analyzed_content.json` with these requirements:
+        1. Output ONLY pure JSON - no markdown code blocks, no explanations, no wrapper text
+        2. Start your response with { and end with }
+        3. Do NOT wrap in ```json or any other markdown
+        4. Use the Write tool to create the file
+
+        ## JSON Structure Required
+        ```json
         {
           "executive_summary": "Your 3-5 sentence summary here",
           "categories": {
@@ -66,10 +80,10 @@ tasks:
                 "link": "..."
               }
             ],
-            "vulnerabilities": [...],
-            "breaches_incidents": [...],
-            "advisories": [...],
-            "industry_news": [...]
+            "vulnerabilities": [],
+            "breaches_incidents": [],
+            "advisories": [],
+            "industry_news": []
           },
           "feed_status": {},
           "metadata": {
@@ -78,24 +92,34 @@ tasks:
             "timestamp": "..."
           }
         }
-
-        Here is the feed data to analyze:
+        ```
         PROMPT_EOF
         {% else %}
-        # Weekly analysis prompt
-        cat > /tmp/analysis_prompt.txt << 'PROMPT_EOF'
-        You are a cybersecurity intelligence analyst. Analyze these 7 daily cybersecurity briefings and create a comprehensive weekly summary.
+        # Weekly analysis - create CLAUDE.md with instructions
+        cat > CLAUDE.md << 'PROMPT_EOF'
+        # Weekly Cybersecurity Intelligence Analysis Task
 
-        CRITICAL: Output ONLY valid JSON with no additional explanations or wrapper text.
+        You are a cybersecurity intelligence analyst. Your task is to analyze multiple daily briefings and create a comprehensive weekly summary.
 
-        Your tasks:
+        ## Step 1: Read and Analyze the Data
+        First, read and examine the `content_data.json` file in your workspace. This contains 7 days of daily briefing reports.
+
+        ## Step 2: Analysis Tasks
         1. Identify recurring threats and persistent vulnerabilities mentioned multiple times
         2. Highlight the top 5-7 most critical items from the entire week
         3. Identify trends: emerging threats, what got patched, what got worse
         4. Consolidate duplicate coverage across days
         5. Create executive summary of the week's threat landscape
 
-        Output valid JSON in this exact structure:
+        ## Step 3: Output Requirements
+        CRITICAL - Write your analysis to `analyzed_content.json` with these requirements:
+        1. Output ONLY pure JSON - no markdown code blocks, no explanations, no wrapper text
+        2. Start your response with { and end with }
+        3. Do NOT wrap in ```json or any other markdown
+        4. Use the Write tool to create the file
+
+        ## JSON Structure Required
+        ```json
         {
           "executive_summary": "Overview of the week's threat landscape",
           "top_critical_items": [
@@ -109,9 +133,9 @@ tasks:
             }
           ],
           "trends": {
-            "emerging_threats": ["...", "..."],
-            "persistent_vulnerabilities": ["...", "..."],
-            "patches_mitigations": ["...", "..."]
+            "emerging_threats": [],
+            "persistent_vulnerabilities": [],
+            "patches_mitigations": []
           },
           "metadata": {
             "reports_analyzed": 7,
@@ -119,16 +143,19 @@ tasks:
             "timestamp": "..."
           }
         }
-
-        Here are the daily briefings to analyze:
+        ```
         PROMPT_EOF
         {% endif %}
 
-        cat content_data.json >> /tmp/analysis_prompt.txt
+        # Run Claude Code with workspace context
+        echo "Running Claude analysis with CLAUDE.md instructions..."
+        claude --dangerously-skip-permissions
 
-        # Run Claude to generate the analysis
-        claude --dangerously-skip-permissions --print "$(cat /tmp/analysis_prompt.txt)" > analyzed_content.json || \
-        echo '{"error": "Failed to generate analysis. See logs for details."}' > analyzed_content.json
+        # Verify output exists
+        if [ ! -f "analyzed_content.json" ]; then
+            echo "⚠️  Error: analyzed_content.json not created"
+            echo '{"error": "Claude did not create the output file"}' > analyzed_content.json
+        fi
 
         # Debug output
         echo "=== Analysis Output Debug ==="
