@@ -285,7 +285,7 @@ tasks:
 Parent flows call subflows like this:
 
 ```yaml
-# In parent flow: _flows/homelab/my_flow.yaml
+# In parent flow: src/homelab/my_flow.yaml
 tasks:
   - id: call_subflow
     type: io.kestra.plugin.core.flow.Subflow
@@ -390,7 +390,7 @@ Before completing a subflow, ensure:
 
 ## File Location
 
-Create subflows at: `subflows/<subflow_name>.yaml`
+Create subflows at: `src/subflows/<subflow_name>.yaml`
 
 ## Best Practices
 
@@ -447,4 +447,4 @@ Present the subflow design to the user:
 1. Show the complete subflow YAML
 2. Show example usage in a parent flow
 3. Ask for approval before creating file
-4. Create in `subflows/` directory
+4. Create in `src/subflows/` directory

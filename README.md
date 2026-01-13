@@ -10,10 +10,17 @@ This repository contains Kestra flow definitions organized by namespace, followi
 
 ```
 .
-├── _flows/              # Kestra flow definitions (organized by namespace)
-│   └── homelab/         # Homelab namespace flows
-│       └── cybersecurity_news_briefing.yaml
-├── subflows/            # Reusable subflow components
+├── src/                 # Source directory for Kestra flows
+│   ├── homelab/         # Homelab namespace flows
+│   │   ├── daily_cybersecurity_news_briefing.yaml
+│   │   └── weekly_cybersecurity_summary.yaml
+│   └── subflows/        # Reusable subflow components
+│       ├── claude_content_analyzer.yaml
+│       ├── markdown_report_generator.yaml
+│       └── rss_feed_collector.yaml
+├── docs/                # Documentation and design documents
+│   ├── plans/           # Design and planning documents
+│   └── example-subflow.yaml  # Example reference subflow
 ├── modules/             # Modular workflow patterns (optional)
 ├── scripts/             # Helper scripts for development
 ├── .github/
@@ -63,7 +70,7 @@ This repository contains Kestra flow definitions organized by namespace, followi
 
 1. Create your flow YAML file in the appropriate namespace directory:
    ```
-   _flows/<namespace>/<flow-name>.yaml
+   src/<namespace>/<flow-name>.yaml
    ```
 
 2. Follow Kestra's flow structure:
@@ -87,12 +94,12 @@ This repository contains Kestra flow definitions organized by namespace, followi
 
 3. Validate your flow locally:
    ```bash
-   yamllint _flows/
+   yamllint src/
    ```
 
 ### Using Subflows
 
-For reusable workflow components, create subflows in the `subflows/` directory:
+For reusable workflow components, create subflows in the `src/subflows/` directory:
 
 ```yaml
 id: reusable_task
@@ -127,7 +134,7 @@ Namespaces provide logical grouping and isolation of flows. Current namespaces:
 - `homelab`: Home laboratory automation and tools
 
 To add a new namespace:
-1. Create a directory under `_flows/<namespace-name>`
+1. Create a directory under `src/<namespace-name>`
 2. Add flows with the corresponding namespace in their YAML definition
 
 ## CI/CD Pipeline
@@ -154,7 +161,7 @@ This repository includes GitHub Actions workflows for:
 yamllint .
 
 # Check specific files
-yamllint _flows/homelab/cybersecurity_news_briefing.yaml
+yamllint src/homelab/daily_cybersecurity_news_briefing.yaml
 ```
 
 ### Testing Flows Locally
@@ -180,12 +187,12 @@ Access the UI at `http://localhost:8080`
 
 ### Validate all flows
 ```bash
-yamllint _flows/
+yamllint src/
 ```
 
 ### Add a new namespace
 ```bash
-mkdir -p _flows/<namespace-name>
+mkdir -p src/<namespace-name>
 ```
 
 ### Update pre-commit hooks

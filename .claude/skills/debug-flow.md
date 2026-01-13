@@ -32,7 +32,7 @@ Ask the user:
 
 First, read the flow file to understand its structure:
 ```bash
-cat _flows/namespace/flow_id.yaml
+cat src/namespace/flow_id.yaml
 ```
 
 Understand:
@@ -45,7 +45,7 @@ Understand:
 
 Run validation first:
 ```bash
-yamllint _flows/namespace/flow_id.yaml
+yamllint src/namespace/flow_id.yaml
 ```
 
 Common YAML issues:

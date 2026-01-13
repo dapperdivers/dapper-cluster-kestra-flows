@@ -28,7 +28,7 @@ When user requests flow validation, execute all levels:
 ### 1. YAML Syntax Check
 
 ```bash
-yamllint _flows/namespace/flow_name.yaml
+yamllint src/namespace/flow_name.yaml
 ```
 
 Check for:
@@ -159,7 +159,7 @@ password|secret|api[_-]?key|token|credential
 
 Verify namespace matches directory:
 ```
-_flows/homelab/my_flow.yaml
+src/homelab/my_flow.yaml
          ^               ^
          |               Must have: namespace: homelab
          Namespace directory
@@ -229,17 +229,17 @@ Run these validations:
 
 ```bash
 # 1. YAML syntax
-yamllint _flows/namespace/flow_name.yaml
+yamllint src/namespace/flow_name.yaml
 
 # 2. Full validation (if available)
 ./scripts/validate-flows.sh
 
 # 3. Check for secrets (basic grep)
 grep -iE 'password.*:.*["\'].*["\']|secret.*:.*["\'].*["\']|api.?key.*:.*["\'].*["\']' \
-  _flows/namespace/flow_name.yaml
+  src/namespace/flow_name.yaml
 
 # 4. Check namespace consistency
-grep "^namespace:" _flows/namespace/flow_name.yaml
+grep "^namespace:" src/namespace/flow_name.yaml
 ```
 
 ## Common Issues and Fixes
@@ -329,7 +329,7 @@ Present validation results as:
 
 ## Validation Command Used
 \`\`\`bash
-yamllint _flows/namespace/flow_name.yaml
+yamllint src/namespace/flow_name.yaml
 \`\`\`
 ```
 

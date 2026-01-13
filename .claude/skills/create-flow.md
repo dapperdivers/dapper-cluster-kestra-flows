@@ -26,7 +26,7 @@ Ask the user for:
 Before creating, check existing flows for patterns:
 ```bash
 # Look for similar flows
-find _flows -name "*.yaml" | head -5
+find src -name "*.yaml" | head -5
 ```
 
 Read similar flows to understand project conventions.
@@ -144,7 +144,7 @@ After creating the flow:
 
 1. **Validate YAML syntax:**
    ```bash
-   yamllint _flows/namespace/flow_id.yaml
+   yamllint src/namespace/flow_id.yaml
    ```
 
 2. **Check structure:**
@@ -175,7 +175,7 @@ Update README.md if introducing new patterns or namespaces.
 
 ### 8. Create the File
 
-Write the flow to: `_flows/<namespace>/<flow_id>.yaml`
+Write the flow to: `src/<namespace>/<flow_id>.yaml`
 
 ## Example Complete Flow
 
@@ -238,7 +238,7 @@ tasks:
 
 Before completing, ensure:
 - [ ] Flow ID is unique and descriptive
-- [ ] Namespace exists in _flows/ directory
+- [ ] Namespace exists in src/ directory
 - [ ] Description is clear and complete
 - [ ] All required inputs are documented
 - [ ] Task types are appropriate for requirements

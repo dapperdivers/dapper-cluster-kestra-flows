@@ -47,7 +47,7 @@ Comprehensive validation of Kestra flows for syntax, structure, and best practic
 ```
 User: /validate-flow
 Claude: I'll validate your Kestra flow. Which flow should I check?
-User: _flows/homelab/my_flow.yaml
+User: src/homelab/my_flow.yaml
 Claude: [Runs validation and provides detailed report]
 ```
 

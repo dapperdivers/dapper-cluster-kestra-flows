@@ -12,7 +12,7 @@ which pre-commit yamllint
 # They will run automatically on git commit
 
 # 3. Validate your changes
-yamllint _flows/
+yamllint src/
 
 # Or use the helper script
 ./scripts/validate-flows.sh
@@ -20,15 +20,15 @@ yamllint _flows/
 
 ## Project Structure Explained
 
-### `_flows/`
-Contains all flow definitions, organized by namespace. Each subdirectory represents a Kestra namespace.
+### `src/`
+Contains all flow definitions and subflows, organized by namespace.
 
-**Example:**
-- `_flows/homelab/` → flows in the `homelab` namespace
-- `_flows/production/` → flows in the `production` namespace
+**Flow Organization:**
+- `src/homelab/` → flows in the `homelab` namespace
+- `src/production/` → flows in the `production` namespace
 
-### `subflows/`
-Reusable workflow components that can be called from multiple flows. Think of these as functions that can be invoked from any flow.
+**Subflows:**
+- `src/subflows/` → Reusable workflow components that can be called from multiple flows. Think of these as functions that can be invoked from any flow.
 
 ### `modules/`
 Optional directory for more complex workflow patterns or templates. Use this for sophisticated reusable patterns that involve multiple flows or complex logic.
@@ -51,7 +51,7 @@ CI/CD automation:
 NAMESPACE="homelab"
 
 # 2. Create the flow file
-cat > _flows/${NAMESPACE}/my_new_flow.yaml <<EOF
+cat > src/${NAMESPACE}/my_new_flow.yaml <<EOF
 id: my_new_flow
 namespace: ${NAMESPACE}
 
@@ -65,10 +65,10 @@ tasks:
 EOF
 
 # 3. Validate
-yamllint _flows/${NAMESPACE}/my_new_flow.yaml
+yamllint src/${NAMESPACE}/my_new_flow.yaml
 
 # 4. Commit
-git add _flows/${NAMESPACE}/my_new_flow.yaml
+git add src/${NAMESPACE}/my_new_flow.yaml
 git commit -m "Add my_new_flow to ${NAMESPACE} namespace"
 ```
 
@@ -79,7 +79,7 @@ git commit -m "Add my_new_flow to ${NAMESPACE} namespace"
 ```
 
 This creates:
-- `_flows/production/` directory
+- `src/production/` directory
 - An example flow to get started
 
 ### Test Locally with Docker
@@ -167,13 +167,13 @@ tasks:
 ### Check YAML Syntax
 ```bash
 # Validate specific file
-yamllint _flows/homelab/my_flow.yaml
+yamllint src/homelab/my_flow.yaml
 
 # Validate all flows
-yamllint _flows/
+yamllint src/
 
 # Check for specific issues
-yamllint -f parsable _flows/
+yamllint -f parsable src/
 ```
 
 ### Common YAML Issues
@@ -266,7 +266,7 @@ pre-commit run --all-files --verbose
 
 ```bash
 # Get detailed error output
-yamllint -f parsable _flows/ | grep error
+yamllint -f parsable src/ | grep error
 ```
 
 ### Docker Issues

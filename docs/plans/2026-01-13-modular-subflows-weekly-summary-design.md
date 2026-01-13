@@ -27,7 +27,7 @@ Refactor the existing daily cybersecurity briefing flow into reusable modular su
 
 ### Subflow 1: RSS Feed Collector
 
-**Location:** `subflows/rss_feed_collector.yaml`
+**Location:** `src/subflows/rss_feed_collector.yaml`
 
 **Purpose:** Fetch and parse RSS feeds from curated cybersecurity sources
 
@@ -69,7 +69,7 @@ Refactor the existing daily cybersecurity briefing flow into reusable modular su
 
 ### Subflow 2: Claude Content Analyzer
 
-**Location:** `subflows/claude_content_analyzer.yaml`
+**Location:** `src/subflows/claude_content_analyzer.yaml`
 
 **Purpose:** Use Claude AI to analyze, categorize, and enhance content
 
@@ -115,7 +115,7 @@ Refactor the existing daily cybersecurity briefing flow into reusable modular su
 
 ### Subflow 3: Markdown Report Generator
 
-**Location:** `subflows/markdown_report_generator.yaml`
+**Location:** `src/subflows/markdown_report_generator.yaml`
 
 **Purpose:** Generate formatted markdown reports from analyzed content
 
@@ -221,7 +221,7 @@ Refactor the existing daily cybersecurity briefing flow into reusable modular su
 
 ### Daily Briefing Flow (Refactored)
 
-**Location:** `_flows/homelab/cybersecurity_news_briefing.yaml`
+**Location:** `src/homelab/daily_cybersecurity_news_briefing.yaml`
 
 **Changes from current implementation:**
 - Extract RSS fetching into subflow call
@@ -249,7 +249,7 @@ Refactor the existing daily cybersecurity briefing flow into reusable modular su
 
 ### Weekly Summary Flow (New)
 
-**Location:** `_flows/homelab/weekly_cybersecurity_summary.yaml`
+**Location:** `src/homelab/weekly_cybersecurity_summary.yaml`
 
 **Purpose:** Generate weekly intelligence summary by aggregating past 7 daily reports
 
