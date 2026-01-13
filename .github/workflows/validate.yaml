@@ -1,0 +1,63 @@
+name: Validate Kestra Flows
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - '_flows/**/*.yaml'
+      - '_flows/**/*.yml'
+      - 'subflows/**/*.yaml'
+      - 'subflows/**/*.yml'
+  push:
+    branches: [main, master]
+    paths:
+      - '_flows/**/*.yaml'
+      - '_flows/**/*.yml'
+      - 'subflows/**/*.yaml'
+      - 'subflows/**/*.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Lint YAML files
+        run: yamllint -c .yamllint.yaml .
+
+      - name: Validate Kestra Flows
+        uses: kestra-io/validate-action@v1
+        with:
+          directory: ./_flows
+          resource: flow
+          server: ${{ secrets.KESTRA_HOST }}
+          user: ${{ secrets.KESTRA_USER }}
+          password: ${{ secrets.KESTRA_PASSWORD }}
+
+  # Uncomment to enable automatic deployment on merge to main
+  # deploy:
+  #   runs-on: ubuntu-latest
+  #   needs: validate
+  #   if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Deploy to Kestra
+  #       uses: kestra-io/deploy-action@v1
+  #       with:
+  #         directory: ./_flows
+  #         resource: flow
+  #         server: ${{ secrets.KESTRA_HOST }}
+  #         user: ${{ secrets.KESTRA_USER }}
+  #         password: ${{ secrets.KESTRA_PASSWORD }}
+  #         namespace: homelab

@@ -1,0 +1,33 @@
+id: example_subflow
+namespace: subflows
+
+description: |
+  Example reusable subflow that can be called from other flows
+
+inputs:
+  - id: message
+    type: STRING
+    description: "Message to log"
+    defaults: "Hello from subflow"
+
+  - id: repeat_count
+    type: INT
+    description: "Number of times to repeat the message"
+    defaults: 1
+
+tasks:
+  - id: log_message
+    type: io.kestra.plugin.core.log.Log
+    message: "Subflow received: {{ inputs.message }}"
+
+  - id: repeat_task
+    type: io.kestra.plugin.core.flow.EachSequential
+    value: "{{ range(1, inputs.repeat_count + 1) }}"
+    tasks:
+      - id: log_iteration
+        type: io.kestra.plugin.core.log.Log
+        message: "Iteration {{ taskrun.value }}: {{ inputs.message }}"
+
+  - id: completion
+    type: io.kestra.plugin.core.log.Log
+    message: "Subflow completed successfully"
