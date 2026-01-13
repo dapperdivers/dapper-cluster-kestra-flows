@@ -13,13 +13,10 @@ triggers:
 
 tasks:
   - id: fetch_execution_history
-    type: io.kestra.plugin.core.execution.Executions
-    description: Query last 7 successful daily briefing executions
-    namespace: homelab
-    flowId: daily_cybersecurity_news
-    limit: 10
-    states:
-      - SUCCESS
+    type: io.kestra.plugin.core.http.Request
+    description: Query last 10 successful daily briefing executions via Kestra API
+    uri: "{{ kestra.webserver.url }}/api/v1/executions/search?namespace=homelab&flowId=daily_cybersecurity_news&state=SUCCESS&size=10&sort=startDate:desc"
+    method: GET
 
   - id: fetch_daily_reports
     type: io.kestra.plugin.scripts.python.Script
@@ -30,7 +27,7 @@ tasks:
     beforeCommands:
       - pip install requests
     inputFiles:
-      executions.json: "{{ outputs.fetch_execution_history.executions }}"
+      api_response.json: "{{ outputs.fetch_execution_history.body }}"
     outputFiles:
       - "weekly_data.json"
     script: |
@@ -39,9 +36,13 @@ tasks:
       import os
       import requests
 
-      # Load execution history
-      with open('executions.json', 'r') as f:
-          executions = json.load(f)
+      # Load execution history from API response
+      with open('api_response.json', 'r') as f:
+          api_data = json.load(f)
+
+      # Extract executions from API response
+      # Kestra API returns results in 'results' or 'executions' array
+      executions = api_data.get('results', api_data.get('executions', []))
 
       print(f"Found {len(executions)} recent executions")
 
@@ -136,13 +137,13 @@ tasks:
       image: python:3.11-slim
     inputFiles:
       weekly_data.json: "{{ outputs.fetch_daily_reports.outputFiles['weekly_data.json'] }}"
-      report_1.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[0].outputs.generate_report.outputs.report_file') | default('') }}"
-      report_2.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[1].outputs.generate_report.outputs.report_file') | default('') }}"
-      report_3.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[2].outputs.generate_report.outputs.report_file') | default('') }}"
-      report_4.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[3].outputs.generate_report.outputs.report_file') | default('') }}"
-      report_5.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[4].outputs.generate_report.outputs.report_file') | default('') }}"
-      report_6.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[5].outputs.generate_report.outputs.report_file') | default('') }}"
-      report_7.md: "{{ outputs.fetch_execution_history.executions | jqFirst('[.[] | select(.state == \"SUCCESS\")] | sort_by(.startDate) | reverse | .[6].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_1.md: "{{ outputs.fetch_execution_history.body | jqFirst('.results // .executions | sort_by(.startDate) | reverse | .[0].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_2.md: "{{ outputs.fetch_execution_history.body | jqFirst('.results // .executions | sort_by(.startDate) | reverse | .[1].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_3.md: "{{ outputs.fetch_execution_history.body | jqFirst('.results // .executions | sort_by(.startDate) | reverse | .[2].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_4.md: "{{ outputs.fetch_execution_history.body | jqFirst('.results // .executions | sort_by(.startDate) | reverse | .[3].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_5.md: "{{ outputs.fetch_execution_history.body | jqFirst('.results // .executions | sort_by(.startDate) | reverse | .[4].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_6.md: "{{ outputs.fetch_execution_history.body | jqFirst('.results // .executions | sort_by(.startDate) | reverse | .[5].outputs.generate_report.outputs.report_file') | default('') }}"
+      report_7.md: "{{ outputs.fetch_execution_history.body | jqFirst('.results // .executions | sort_by(.startDate) | reverse | .[6].outputs.generate_report.outputs.report_file') | default('') }}"
     outputFiles:
       - "weekly_reports.json"
     script: |
