@@ -2,159 +2,41 @@ id: claude_content_analyzer
 namespace: subflows
 
 description: |
-  Reusable subflow that uses Claude AI to analyze cybersecurity content.
+  Reusable subflow that uses the cybersecurity news agent container to fetch and analyze cybersecurity content.
+  The agent includes built-in RSS fetching capabilities and pre-configured analysis skills.
   Supports different analysis types: daily (categorize and filter) or weekly (aggregate and identify trends).
 
 inputs:
-  - id: content_data
-    type: JSON
-    description: "Content to analyze (articles JSON for daily, or combined reports for weekly)"
-
   - id: analysis_type
     type: STRING
     description: "Type of analysis: 'daily' or 'weekly'"
     defaults: "daily"
 
-  - id: prompt_override
-    type: STRING
-    description: "Optional custom prompt to override default analysis prompt"
-    required: false
-
 tasks:
-  - id: analyze_content
+  - id: analyze_with_claude
     type: io.kestra.plugin.scripts.shell.Commands
-    description: Use Claude AI to analyze content based on analysis type
+    description: Use cybersecurity news agent to fetch RSS feeds and analyze content
     taskRunner:
       type: io.kestra.plugin.scripts.runner.docker.Docker
-      image: nezhar/claude-container:latest
-      user: "1000:1000"
+      image: ghcr.io/dapperdivers/cybersecurity_news_agent:latest
     env:
       CLAUDE_CODE_OAUTH_TOKEN: "{{ globals['claude-code-oauth-token'] }}"
     outputFiles:
       - "analyzed_content.json"
     commands:
       - |
-        # Stage content data in workspace for Claude CLI
-        cat > content_data.json << 'DATA_EOF'
-        {{ inputs.content_data }}
-        DATA_EOF
+        # Run the cybersecurity news agent with built-in RSS fetching and analysis
+        echo "Running agent-based analysis..."
+        claude --dangerously-skip-permissions --agent news-aggregator "use the security-intelligence-analysis skill to create a daily briefing"
 
-        {% if inputs.analysis_type == 'daily' %}
-        # Daily analysis - create CLAUDE.md with instructions
-        cat > CLAUDE.md << 'PROMPT_EOF'
-        # Cybersecurity Intelligence Analysis Task
-
-        You are a cybersecurity intelligence analyst. Your task is to analyze RSS feed articles and create a structured intelligence analysis.
-
-        ## Step 1: Read and Analyze the Data
-        First, read and examine the `content_data.json` file in your workspace. Understand the structure and content of the articles.
-
-        ## Step 2: Analysis Tasks
-        1. Filter out low-impact stories, marketing content, and duplicate coverage
-        2. Categorize articles into: Critical Alerts, Vulnerabilities, Breaches & Incidents, Advisories, Industry News
-        3. For each significant item, extract: key facts, affected systems, severity, and recommended actions
-        4. Create a 3-5 sentence executive summary highlighting the most critical items
-
-        ## Step 3: Output Requirements
-        CRITICAL - Write your analysis to `analyzed_content.json` with these requirements:
-        1. Output ONLY pure JSON - no markdown code blocks, no explanations, no wrapper text
-        2. Start your response with { and end with }
-        3. Do NOT wrap in ```json or any other markdown
-        4. Use the Write tool to create the file
-
-        ## JSON Structure Required
-        ```json
-        {
-          "executive_summary": "Your 3-5 sentence summary here",
-          "categories": {
-            "critical_alerts": [
-              {
-                "title": "...",
-                "source": "...",
-                "date": "...",
-                "summary": "...",
-                "impact": "...",
-                "affected_systems": "...",
-                "severity": "high|critical",
-                "recommended_actions": "...",
-                "link": "..."
-              }
-            ],
-            "vulnerabilities": [],
-            "breaches_incidents": [],
-            "advisories": [],
-            "industry_news": []
-          },
-          "feed_status": {},
-          "metadata": {
-            "total_articles": 0,
-            "analyzed_count": 0,
-            "timestamp": "..."
-          }
-        }
-        ```
-        PROMPT_EOF
-        {% else %}
-        # Weekly analysis - create CLAUDE.md with instructions
-        cat > CLAUDE.md << 'PROMPT_EOF'
-        # Weekly Cybersecurity Intelligence Analysis Task
-
-        You are a cybersecurity intelligence analyst. Your task is to analyze multiple daily briefings and create a comprehensive weekly summary.
-
-        ## Step 1: Read and Analyze the Data
-        First, read and examine the `content_data.json` file in your workspace. This contains 7 days of daily briefing reports.
-
-        ## Step 2: Analysis Tasks
-        1. Identify recurring threats and persistent vulnerabilities mentioned multiple times
-        2. Highlight the top 5-7 most critical items from the entire week
-        3. Identify trends: emerging threats, what got patched, what got worse
-        4. Consolidate duplicate coverage across days
-        5. Create executive summary of the week's threat landscape
-
-        ## Step 3: Output Requirements
-        CRITICAL - Write your analysis to `analyzed_content.json` with these requirements:
-        1. Output ONLY pure JSON - no markdown code blocks, no explanations, no wrapper text
-        2. Start your response with { and end with }
-        3. Do NOT wrap in ```json or any other markdown
-        4. Use the Write tool to create the file
-
-        ## JSON Structure Required
-        ```json
-        {
-          "executive_summary": "Overview of the week's threat landscape",
-          "top_critical_items": [
-            {
-              "title": "...",
-              "days_mentioned": 3,
-              "summary": "...",
-              "impact": "...",
-              "trend": "emerging|persistent|resolved",
-              "recommended_actions": "..."
-            }
-          ],
-          "trends": {
-            "emerging_threats": [],
-            "persistent_vulnerabilities": [],
-            "patches_mitigations": []
-          },
-          "metadata": {
-            "reports_analyzed": 7,
-            "date_range": "...",
-            "timestamp": "..."
-          }
-        }
-        ```
-        PROMPT_EOF
-        {% endif %}
-
-        # Run Claude Code with workspace context
-        echo "Running Claude analysis with CLAUDE.md instructions..."
-        claude --dangerously-skip-permissions
-
-        # Verify output exists
-        if [ ! -f "analyzed_content.json" ]; then
-            echo "⚠️  Error: analyzed_content.json not created"
-            echo '{"error": "Claude did not create the output file"}' > analyzed_content.json
+        # Agent writes output to /app/outputs/daily-brief-YYYY-MM-DD.json
+        # Copy to Kestra's expected output location
+        if [ -f /app/outputs/daily-brief-*.json ]; then
+            echo "✅ Agent output found, copying to analyzed_content.json"
+            cp /app/outputs/daily-brief-*.json analyzed_content.json
+        else
+            echo "⚠️  Error: Agent did not create the output file"
+            echo '{"error": "Agent did not create the output file"}' > analyzed_content.json
         fi
 
         # Debug output
@@ -168,4 +50,4 @@ tasks:
 outputs:
   - id: analyzed_content
     type: JSON
-    value: "{{ read(outputs.analyze_content.outputFiles['analyzed_content.json']) }}"
+    value: "{{ read(outputs.analyze_with_claude.outputFiles['analyzed_content.json']) }}"

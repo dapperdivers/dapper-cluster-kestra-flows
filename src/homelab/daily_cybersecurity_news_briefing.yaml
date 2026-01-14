@@ -2,8 +2,9 @@ id: daily_cybersecurity_news
 namespace: homelab
 
 description: |
-  Daily automated cybersecurity intelligence briefing that monitors curated RSS feeds,
-  uses Claude AI to analyze and categorize content, and generates a structured markdown report.
+  Daily automated cybersecurity intelligence briefing that uses the cybersecurity news agent
+  to fetch RSS feeds, analyze and categorize content, and generates a structured markdown report.
+  The agent container includes built-in RSS fetching and analysis capabilities.
   This flow uses modular subflows for maximum reusability.
 
 triggers:
@@ -11,29 +12,14 @@ triggers:
     type: io.kestra.plugin.core.trigger.Schedule
     cron: "0 7 * * *"  # Run daily at 7 AM
 
-inputs:
-  - id: hours_back
-    type: INT
-    description: "Hours of news to collect (default: 24)"
-    defaults: 24
-
 tasks:
-  - id: collect_feeds
-    type: io.kestra.plugin.core.flow.Subflow
-    namespace: subflows
-    flowId: rss_feed_collector
-    inputs:
-      hours_back: "{{ inputs.hours_back }}"
-    description: Fetch and parse RSS feeds from curated cybersecurity sources
-
   - id: analyze_content
     type: io.kestra.plugin.core.flow.Subflow
     namespace: subflows
     flowId: claude_content_analyzer
     inputs:
-      content_data: "{{ outputs.collect_feeds.outputs.feeds_data }}"
       analysis_type: "daily"
-    description: Use Claude AI to analyze, categorize, and filter content
+    description: Use cybersecurity news agent to fetch RSS feeds and analyze content
 
   - id: generate_report
     type: io.kestra.plugin.core.flow.Subflow
@@ -43,7 +29,6 @@ tasks:
       analyzed_content: "{{ outputs.analyze_content.outputs.analyzed_content }}"
       report_type: "daily"
       report_date: "{{ execution.startDate | date('yyyy-MM-dd') }}"
-      feed_status: "{{ outputs.collect_feeds.outputs.feeds_data | jq('.feed_status') }}"
     description: Generate formatted markdown briefing report
 
   - id: display_report
@@ -75,5 +60,6 @@ tasks:
       kestra outputs download "{{ outputs.generate_report.outputs.report_file }}"
 
       📊 STATISTICS:
-      - Total Articles: {{ outputs.collect_feeds.outputs.feeds_data | jq('.total_articles') }}
-      - Time Range: {{ outputs.collect_feeds.outputs.feeds_data | jq('.time_range.from') }} to {{ outputs.collect_feeds.outputs.feeds_data | jq('.time_range.to') }}
+      - Total Articles: {{ outputs.analyze_content.outputs.analyzed_content | jq('.metadata.total_articles') }}
+      - Analyzed Count: {{ outputs.analyze_content.outputs.analyzed_content | jq('.metadata.analyzed_count') }}
+      - Timestamp: {{ outputs.analyze_content.outputs.analyzed_content | jq('.metadata.timestamp') }}

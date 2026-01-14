@@ -19,11 +19,6 @@ inputs:
     type: STRING
     description: "Date for report filename (YYYY-MM-DD format)"
 
-  - id: feed_status
-    type: JSON
-    description: "Feed status data (for daily reports only)"
-    required: false
-
 tasks:
   - id: generate_report
     type: io.kestra.plugin.scripts.shell.Commands
@@ -102,12 +97,6 @@ tasks:
         ## Industry News
 
         [Format items from industry_news array]
-
-        ---
-
-        ## Feed Health Status
-
-        [List each feed from feed_status with ✅ success or ⚠️ error status and article counts]
 
         ---
 
